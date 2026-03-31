@@ -3,5 +3,5 @@ opencv-contrib-python-headless
 protobuf<4
 requests
 python-dotenv
-mediapipe
+mediapipe==0.10.11
 streamlit
