@@ -1,19 +1,5 @@
-import os
-import subprocess
-import sys
-
-# --- EMERGENCY STREAMLIT LINUX DRIVER INJECTION ---
-try:
-    import cv2
-except ImportError:
-    subprocess.check_call(["sudo", "apt-get", "update"])
-    subprocess.check_call(["sudo", "apt-get", "install", "-y", "libgl1-mesa-glx", "libsm6", "libxext6", "libxrender-dev"])
-    
-    if 'cv2' in sys.modules:
-        del sys.modules['cv2']
-    import cv2
-
 import streamlit as st
+import cv2
 import time
 import threading
 import mediapipe as mp
