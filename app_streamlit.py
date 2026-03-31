@@ -1,13 +1,20 @@
 import streamlit as st
 import cv2
 import time
-import threading
-import mediapipe as mp
 
-# Force caching at the global level for Streamlit
-# (Using direct imports to bypass Streamlit's 'uv' missing __init__ bindings bug)
-from mediapipe.python.solutions import hands as mp_hands
-from mediapipe.python.solutions import drawing_utils as mp_drawing
+import threading
+
+import mediapipe as mp
+# Deep diagnostics for MediaPipe silent failures on Streamlit Cloud
+try:
+    import mediapipe.python._framework_bindings as bindings
+    import mediapipe.python.solutions.hands as mp_hands
+    import mediapipe.python.solutions.drawing_utils as mp_drawing
+except Exception as e:
+    st.error(f"🚨 CRITICAL MEDIAPIPE INITIALIZATION FAILURE: {str(e)}")
+    st.error("This usually means a missing Linux C++ library (like libGL.so.1) or a Protobuf version conflict.")
+    st.stop()
+
 
 # Import our custom modules
 from alarm import trigger_alarm

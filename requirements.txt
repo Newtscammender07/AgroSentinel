@@ -1,4 +1,6 @@
 opencv-python-headless
+opencv-contrib-python-headless
+protobuf<4
 requests
 python-dotenv
 mediapipe
