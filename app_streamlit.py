@@ -5,8 +5,9 @@ import threading
 import mediapipe as mp
 
 # Force caching at the global level for Streamlit
-mp_hands = mp.solutions.hands
-mp_drawing = mp.solutions.drawing_utils
+# (Using direct imports to bypass Streamlit's 'uv' missing __init__ bindings bug)
+from mediapipe.python.solutions import hands as mp_hands
+from mediapipe.python.solutions import drawing_utils as mp_drawing
 
 # Import our custom modules
 from alarm import trigger_alarm
