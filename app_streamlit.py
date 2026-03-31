@@ -199,13 +199,9 @@ if run_system:
                 status_indicator.markdown("### 🔴 Intrusion detected")
                 st.error("🔊 ALARM TRIGGERED: Please check video stream!")
                 
-                # Dynamically compile an invisible HTML5 Audio tag that auto-plays a loud siren!
-                alarm_html = """
-                    <audio autoplay>
-                        <source src="https://www.soundjay.com/button/beep-07.wav" type="audio/wav">
-                    </audio>
-                """
-                st.markdown(alarm_html, unsafe_allow_html=True)
+                # Use Streamlit 1.55 Native AutoPlay Audio with a reliable Google Cloud sound file
+                alarm_url = "https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg"
+                st.audio(alarm_url, format="audio/ogg", autoplay=True)
             else:
                 status_indicator.markdown("### 🟢 Active")
 
