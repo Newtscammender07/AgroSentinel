@@ -5,6 +5,7 @@ import threading
 import mediapipe as mp
 import av
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode, RTCConfiguration
+from streamlit_autorefresh import st_autorefresh
 
 # Standard MediaPipe Initializations
 mp_hands = mp.solutions.hands
@@ -164,6 +165,10 @@ with camera_col:
     FRAME_WINDOW = st.empty()
 
 if run_system:
+    # 🔌 Trigger silent background polling every 1.5 seconds!
+    # This loop allows the main Streamlit UI to routinely check on the WebRTC AI thread.
+    st_autorefresh(interval=1500, limit=None, key="alarm_poller")
+    
     st.success("System Armed! Stream initialized.")
     if "System Armed" not in st.session_state.logs[0]:
         log_event("🟢 System Armed! Requesting webcam access...")
@@ -188,9 +193,19 @@ if run_system:
             ctx.video_processor.zone_w = zone_w
             ctx.video_processor.zone_h = zone_h
             
-            # We can optionally hook status indicators dynamically if the processor saw an intruder recently
-            if time.time() - ctx.video_processor.last_trigger_time < 2.0:
+            # Since autorefresh checks this script every 1.5 seconds, we can check for recent triggers!
+            time_since_intrusion = time.time() - ctx.video_processor.last_trigger_time
+            if time_since_intrusion < 4.0:
                 status_indicator.markdown("### 🔴 Intrusion detected")
+                st.error("🔊 ALARM TRIGGERED: Please check video stream!")
+                
+                # Dynamically compile an invisible HTML5 Audio tag that auto-plays a loud siren!
+                alarm_html = """
+                    <audio autoplay>
+                        <source src="https://www.soundjay.com/button/beep-07.wav" type="audio/wav">
+                    </audio>
+                """
+                st.markdown(alarm_html, unsafe_allow_html=True)
             else:
                 status_indicator.markdown("### 🟢 Active")
 

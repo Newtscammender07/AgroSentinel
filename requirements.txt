@@ -6,3 +6,4 @@ python-dotenv
 mediapipe==0.10.11
 streamlit
 streamlit-webrtc
+streamlit-autorefresh
