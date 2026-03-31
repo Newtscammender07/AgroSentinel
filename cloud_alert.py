@@ -2,13 +2,17 @@ import requests
 import os
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
-
-# Get Telegram keys from the environment variables
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
+try:
+    # 1. Try Streamlit Cloud's Secure Secrets First
+    import streamlit as st
+    TELEGRAM_BOT_TOKEN = st.secrets["TELEGRAM_BOT_TOKEN"]
+    TELEGRAM_CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
+except:
+    # 2. Fallback to Local PC .env file
+    load_dotenv()
+    TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+    
 def send_telegram_alert(message, image_path=None):
     """
     Sends a message and an optional image to a Telegram Chat.
