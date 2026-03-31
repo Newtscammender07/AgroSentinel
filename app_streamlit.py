@@ -1,5 +1,17 @@
+import os
+import subprocess
 import streamlit as st
-import cv2
+
+# --- STREAMLIT CLOUD DEPENDENCY HOTFIX ---
+# Mediapipe forces the GUI version of OpenCV which crashes Linux servers because of broken APT repositories.
+# This dynamically wipes the broken GUI version on boot so the server uses the Headless version.
+try:
+    import cv2
+except ImportError:
+    print("Detected OpenCV GUI crash. Hot-swapping to Headless version natively...")
+    subprocess.check_call(["python", "-m", "pip", "uninstall", "-y", "opencv-python", "opencv-python-headless"])
+    subprocess.check_call(["python", "-m", "pip", "install", "opencv-python-headless"])
+    import cv2
 import time
 import threading
 import mediapipe as mp
