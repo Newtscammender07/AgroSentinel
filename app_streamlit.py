@@ -1,16 +1,27 @@
 import os
 import subprocess
+import sys
 import streamlit as st
 
 # --- STREAMLIT CLOUD DEPENDENCY HOTFIX ---
-# Mediapipe forces the GUI version of OpenCV which crashes Linux servers because of broken APT repositories.
-# This dynamically wipes the broken GUI version on boot so the server uses the Headless version.
+# Mediapipe forcefully installs the GUI version of OpenCV and opencv-contrib-python.
+# The server lacks libGL.so.1 for these GUI builds.
+# We wipe them out completely, clear python's import cache, and install pure headless versions!
 try:
     import cv2
 except ImportError:
-    print("Detected OpenCV GUI crash. Hot-swapping to Headless version natively...")
-    subprocess.check_call(["python", "-m", "pip", "uninstall", "-y", "opencv-python", "opencv-python-headless"])
-    subprocess.check_call(["python", "-m", "pip", "install", "opencv-python-headless"])
+    st.info("Applying Headless OpenCV Hotfix to bypass Streamlit's broken Linux server...")
+    
+    # Forcefully remove ALL generic/GUI opencv components
+    subprocess.check_call(["python", "-m", "pip", "uninstall", "-y", "opencv-python", "opencv-contrib-python", "opencv-python-headless", "opencv-contrib-python-headless"])
+    
+    # Natively install pure headless versions
+    subprocess.check_call(["python", "-m", "pip", "install", "opencv-python-headless", "opencv-contrib-python-headless"])
+    
+    # CRITICAL: Python aggressively caches failed imports. We *must* delete the corrupted cache before trying to import again!
+    if 'cv2' in sys.modules:
+        del sys.modules['cv2']
+        
     import cv2
 import time
 import threading
