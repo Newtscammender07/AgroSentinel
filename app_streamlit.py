@@ -3,15 +3,9 @@ import cv2
 import threading
 import mediapipe as mp
 
-# MediaPipe Installation Diagnostic Tool
-import os
-try:
-    mp_path = mp.__path__[0]
-    st.error(f"MediaPipe is installed at: {mp_path}")
-    st.error(f"Files inside MediaPipe: {os.listdir(mp_path)}")
-except Exception as e:
-    st.error(f"Failed to inspect MediaPipe: {e}")
-st.stop()
+# Standard MediaPipe Initializations
+mp_hands = mp.solutions.hands
+mp_drawing = mp.solutions.drawing_utils
 
 
 
