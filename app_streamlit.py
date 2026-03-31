@@ -3,12 +3,89 @@ import cv2
 import time
 import threading
 import mediapipe as mp
+import av
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode, RTCConfiguration
 
 # Standard MediaPipe Initializations
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 
+# WebRTC STUN servers to punch through local Wi-Fi firewalls
+RTC_CONFIGURATION = RTCConfiguration(
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+)
 
+# --- WEBRTC PROCESSOR CLASS ---
+# Runs entirely on an isolated background thread to process frames from the browser!
+class AIProcessor(VideoProcessorBase):
+    def __init__(self):
+        self.hands_ai = mp_hands.Hands(max_num_hands=2, min_detection_confidence=0.7, min_tracking_confidence=0.7)
+        self.cooldown_seconds = 5.0
+        self.last_trigger_time = 0.0
+        # Default zone parameters (will be dynamically overwritten by Streamlit UI)
+        self.zone_x = 150
+        self.zone_y = 100
+        self.zone_w = 350
+        self.zone_h = 300
+    
+    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
+        image_bgr = frame.to_ndarray(format="bgr24")
+        height, width, _ = image_bgr.shape
+        
+        # Convert BGR to RGB for MediaPipe math
+        image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+        
+        tree_box = (self.zone_x, self.zone_y, self.zone_x + self.zone_w, self.zone_y + self.zone_h)
+        
+        results = self.hands_ai.process(image_rgb)
+        box_color = (0, 255, 0)
+        touch_detected = False
+        
+        if results.multi_hand_landmarks:
+            for hand_landmarks in results.multi_hand_landmarks:
+                mp_drawing.draw_landmarks(image_rgb, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                for lm in hand_landmarks.landmark:
+                    px, py = int(lm.x * width), int(lm.y * height)
+                    if tree_box[0] <= px <= tree_box[2] and tree_box[1] <= py <= tree_box[3]:
+                        touch_detected = True
+                        break
+                if touch_detected: break
+                
+        if touch_detected:
+            box_color = (255, 0, 0) # Red Intrusion Box
+            
+        cv2.rectangle(image_rgb, (tree_box[0], tree_box[1]), (tree_box[2], tree_box[3]), box_color, 4)
+        cv2.putText(image_rgb, "Tree Zone", (tree_box[0], tree_box[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, box_color, 2)
+        
+        current_time = time.time()
+        if touch_detected and (current_time - self.last_trigger_time > self.cooldown_seconds):
+            self.last_trigger_time = current_time
+            
+            # Massive stamp on the physical video frame
+            cv2.putText(image_rgb, "AI TRIGGER: INTRUDER CAUGHT", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 3)
+            
+            # Fire local siren
+            try: trigger_alarm()
+            except: pass
+            
+            # Save the frame properly converting back to BGR for `cv2.imwrite`
+            frame_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+            photo_path = 'ai_intruder_catch.jpg'
+            cv2.imwrite(photo_path, frame_bgr)
+            
+            # Dispatch Telegram quietly over Thread so video doesn't lag!
+            def send_cloud_async():
+                try: send_telegram_alert("🚨 VIRTUAL AI PERIMETER BREACH! 🚨\nThe AI detected a hand touching the plant. See attached evidence.", photo_path)
+                except: pass
+            threading.Thread(target=send_cloud_async).start()
+
+        # Convert back to BGR for outputting to the web browser successfully
+        final_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+        # Check if intrusion just happened to stamp it even when the bounding box isn't actively red
+        if current_time - self.last_trigger_time < 2.0:
+            cv2.putText(final_bgr, "🚨 INTRUDER CAUGHT!", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
+            
+        return av.VideoFrame.from_ndarray(final_bgr, format="bgr24")
 
 # Import our custom modules
 from alarm import trigger_alarm
@@ -87,107 +164,36 @@ with camera_col:
     FRAME_WINDOW = st.empty()
 
 if run_system:
-    st.success("System Armed")
+    st.success("System Armed! Stream initialized.")
     if "System Armed" not in st.session_state.logs[0]:
-        log_event("🟢 System Armed! Loading camera module...")
+        log_event("🟢 System Armed! Requesting webcam access...")
         render_logs()
-
-    # Capture Video Native
-    cap = cv2.VideoCapture(0)
-    
-    if not cap.isOpened():
-        st.error("❌ The Webcam is currently locked. Close all other terminals and Python scripts, then refresh this page!")
-        st.stop()
         
-    ret, frame = cap.read()
-    if not ret:
-        st.error("Failed to read from camera. The hardware is locked or disconnected.")
-        st.stop()
+    with camera_col:
+        # Launch the fully managed Streamlit WebRTC Pipeline
+        ctx = webrtc_streamer(
+            key="agro-sentinel",
+            mode=WebRtcMode.SENDRECV,
+            rtc_configuration=RTC_CONFIGURATION,
+            video_processor_factory=AIProcessor,
+            media_stream_constraints={"video": True, "audio": False},
+            async_processing=True # Improves framerate massively!
+        )
         
-    # AI Engine - Initializing from root-level loaded module!
-    hands_ai = mp_hands.Hands(max_num_hands=2, min_detection_confidence=0.7, min_tracking_confidence=0.7)
-    cooldown_seconds = 5.0
-    
-    try:
-        # Infinite Streamlit Loop
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                st.error("Video stream ended unexpectedly.")
-                break
-                
-            height, width, _ = frame.shape
+        # Cross-Thread Tunneling: 
+        # Pass the Streamlit Slider Math into the isolated C++ Video thread instantly!
+        if ctx.video_processor:
+            ctx.video_processor.zone_x = zone_x
+            ctx.video_processor.zone_y = zone_y
+            ctx.video_processor.zone_w = zone_w
+            ctx.video_processor.zone_h = zone_h
             
-            # Dynamically hook the Streamlit sliders to the math logic every single frame!
-            tree_box = (zone_x, zone_y, zone_x + zone_w, zone_y + zone_h)
-                
-            # Converting BGR to RGB for MediaPipe AND Streamlit!
-            # Both Streamlit `st.image` and MediaPipe require RGB format!
-            image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
-            # Analyze Frame
-            results = hands_ai.process(image_rgb)
-            
-            box_color = (0, 255, 0) # GREEN by default
-            touch_detected = False
-            
-            # Skeleton Drawing & Collision 
-            if results.multi_hand_landmarks:
-                for hand_landmarks in results.multi_hand_landmarks:
-                    mp_drawing.draw_landmarks(image_rgb, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-                    
-                    # Math Check
-                    for lm in hand_landmarks.landmark:
-                        px, py = int(lm.x * width), int(lm.y * height)
-                        if tree_box[0] <= px <= tree_box[2] and tree_box[1] <= py <= tree_box[3]:
-                            touch_detected = True
-                            break
-                    if touch_detected: break
-                    
-            # Handle Collision Events
-            if touch_detected:
-                box_color = (255, 0, 0) # RGB format RED is (255, 0, 0)!
+            # We can optionally hook status indicators dynamically if the processor saw an intruder recently
+            if time.time() - ctx.video_processor.last_trigger_time < 2.0:
                 status_indicator.markdown("### 🔴 Intrusion detected")
             else:
                 status_indicator.markdown("### 🟢 Active")
-                
-            # Draw Box onto the RGB frame
-            cv2.rectangle(image_rgb, (tree_box[0], tree_box[1]), (tree_box[2], tree_box[3]), box_color, 4)
-            cv2.putText(image_rgb, "Tree Zone", (tree_box[0], tree_box[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, box_color, 2)
-            
-            # Trigger Logic
-            if touch_detected and (time.time() - st.session_state.last_trigger_time > cooldown_seconds):
-                st.session_state.last_trigger_time = time.time()
-                
-                # Flash UI Log Update Live!
-                log_event("🚨 INTRUDER HAND DETECTED!")
-                render_logs()
-                
-                # Fire local siren
-                trigger_alarm()
-                
-                # Stamp Warning on frame
-                cv2.putText(image_rgb, "AI TRIGGER: INTRUDER CAUGHT", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 3)
-                
-                # Save the frame properly converting back to BGR for `cv2.imwrite`
-                frame_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
-                photo_path = 'ai_intruder_catch.jpg'
-                cv2.imwrite(photo_path, frame_bgr)
-                
-                # Dispatch Telegram quietly over Thread
-                def send_cloud_async():
-                    send_telegram_alert("🚨 VIRTUAL AI PERIMETER BREACH! 🚨\nThe AI detected a hand touching the plant. See attached evidence.", photo_path)
-                threading.Thread(target=send_cloud_async).start()
-                
-                log_event("☁️ Dispatching Telegram Message...")
-                render_logs()
 
-            # Instantly render the RGB frame directly inside the Web App Container!
-            FRAME_WINDOW.image(image_rgb, use_container_width=True)
-            
-    finally:
-        # Absolutely guarantee the camera turns off if you interact with the sliders to restart the script!
-        cap.release()
         
 else:
     # If the system is turned off
